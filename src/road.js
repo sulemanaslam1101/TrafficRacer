@@ -4,7 +4,7 @@ export class Road {
   constructor() {
     this.segments = [];
     this.segmentLength = 20;
-    this.numSegments = 100;
+    this.numSegments = 500;
     this.roadWidth = 16;
     this.laneWidth = 4;
     this.speed = 0.4;
@@ -262,9 +262,7 @@ export class Road {
   }
   
   update() {
-    // Move all segments towards the player
-    for (let i = 0; i < this.segments.length; i++) {
-      this.segments[i].position.z -= this.speed;
-    }
+    // Road stays stationary - no movement needed
+    return;
   }
 }

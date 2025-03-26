@@ -3,6 +3,8 @@ import { PlayerCar } from './player-car.js';
 import { TrafficManager } from './traffic-manager.js';
 import { Road } from './road.js';
 import { CoinManager } from './coin-manager.js';
+import { AirObstacleManager } from './air-obstacle-manager.js';
+import { AudioManager } from './audio-manager.js';
 
 export class Game {
   constructor(container) {
@@ -11,11 +13,28 @@ export class Game {
     this.scoreElement = document.getElementById('score');
     this.gameOver = false;
     
+    // Initialize audio manager
+    this.audioManager = new AudioManager();
+    
     // Add a game speed property that can be adjusted
     this.gameSpeed = 1.0;
     this.normalSpeed = 1.0;
     this.brakeDeceleration = 0.05;
     this.acceleration = 0.1;
+    
+    // Create health display
+    this.healthElement = document.createElement('div');
+    this.healthElement.id = 'player-health';
+    this.healthElement.style.position = 'absolute';
+    this.healthElement.style.top = '60px';
+    this.healthElement.style.left = '20px';
+    this.healthElement.style.color = 'white';
+    this.healthElement.style.fontFamily = 'Arial, sans-serif';
+    this.healthElement.style.fontWeight = 'bold';
+    this.healthElement.style.fontSize = '24px';
+    this.healthElement.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+    this.healthElement.innerHTML = 'Health: 100';
+    document.body.appendChild(this.healthElement);
     
     // Set up the scene
     this.scene = new THREE.Scene();
@@ -52,7 +71,10 @@ export class Game {
     this.trafficManager = new TrafficManager(this.scene);
 
     // Set up coin manager
-    this.coinManager = new CoinManager(this.scene);
+    this.coinManager = new CoinManager(this.scene, this.audioManager);
+    
+    // Set up air obstacle manager
+    this.airObstacleManager = new AirObstacleManager(this.scene, this.audioManager);
     
     // Handle window resize
     window.addEventListener('resize', this.onWindowResize.bind(this));
@@ -61,6 +83,11 @@ export class Game {
     this.keys = {};
     window.addEventListener('keydown', this.onKeyDown.bind(this));
     window.addEventListener('keyup', this.onKeyUp.bind(this));
+    
+    // Add camera follow properties
+    this.cameraOffset = new THREE.Vector3(0, 16, -22);
+    this.cameraTarget = new THREE.Vector3(0, 0, 20);
+    this.cameraLerpFactor = 0.1; // Smooth camera following
   }
   
   setupLights() {
@@ -96,33 +123,36 @@ export class Game {
   update() {
     if (this.gameOver) return;
     
-    // Check if braking
+    // Check controls
     const isBraking = this.keys['ArrowDown'] || false;
+    const isAccelerating = this.keys['ArrowUp'] || false;
     
-    // Gradually adjust game speed based on braking
-    if (isBraking) {
-        // Gradually slow down
-        this.gameSpeed = Math.max(0, this.gameSpeed - this.brakeDeceleration);
-    } else {
-        // Gradually speed back up to normal
-        this.gameSpeed = Math.min(this.normalSpeed, this.gameSpeed + this.acceleration);
-    }
+    // Keep road stationary
+    this.road.speed = 0;
     
-    // Only move the road if there's some speed
-    if (this.gameSpeed > 0) {
-        // Use the current game speed to scale the road update
-        this.road.speed = 0.4 * this.gameSpeed;
-        this.road.update();
-        
-        // Update traffic with current speed
-        this.trafficManager.update(this.gameSpeed);
+    // Update traffic based on player's speed
+    this.trafficManager.update(this.playerCar.speed);
 
-        // Update coins with road speed
-        this.coinManager.update(this.road.speed);
-    }
+    // Update coins with same speed as traffic
+    this.coinManager.update(this.playerCar.speed);
     
-    // Update player car - swap left and right parameters
-    this.playerCar.update(this.keys['ArrowRight'], this.keys['ArrowLeft'], isBraking);
+    // Update air obstacles
+    this.airObstacleManager.update(
+      this.playerCar.mesh.position,
+      this.playerCar.speed,
+      this.score
+    );
+    
+    // Update player car with all controls - swap left and right for correct directions
+    this.playerCar.update(
+      this.keys['ArrowRight'],
+      this.keys['ArrowLeft'],
+      isBraking,
+      isAccelerating
+    );
+    
+    // Update camera position to follow player
+    this.updateCamera();
     
     // Check collisions
     const playerBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
@@ -131,21 +161,81 @@ export class Game {
     if (this.coinManager.checkCollision(playerBox)) {
         this.score += 10;
         this.scoreElement.textContent = 'Score: ' + this.score;
+        this.audioManager.play('coinCollect');
+    }
+    
+    // Check for collisions with aerial projectiles
+    const projectileDamage = this.airObstacleManager.checkCollision(playerBox);
+    if (projectileDamage > 0) {
+        // Apply damage to player
+        const isDead = this.playerCar.takeDamage(projectileDamage);
+        
+        // Update health display in HUD
+        this.healthElement.innerHTML = 'Health: ' + this.playerCar.health;
+        
+        // Add visual indication of damage 
+        this.healthElement.classList.add('flash');
+        setTimeout(() => {
+            this.healthElement.classList.remove('flash');
+        }, 300);
+        
+        // Color the health text based on health level
+        this.healthElement.className = ''; // Clear classes
+        if (this.playerCar.health <= 25) {
+            this.healthElement.classList.add('danger');
+        } else if (this.playerCar.health <= 50) {
+            this.healthElement.classList.add('warning');
+        }
+        
+        // Log hit for debugging
+        console.log(`Player hit! Health: ${this.playerCar.health}`);
+        
+        // Check if player died from this hit
+        if (isDead) {
+            this.gameOver = true;
+            this.audioManager.play('crash');
+            alert('Game Over! Your score: ' + this.score);
+            location.reload();
+            return;
+        }
     }
     
     // Check traffic collisions
     if (this.checkCollisions()) {
         this.gameOver = true;
+        this.audioManager.play('crash');
         alert('Game Over! Your score: ' + this.score);
         location.reload();
         return;
     }
     
     // Update score based on current speed
-    if (this.gameSpeed > 0) {
-        this.score += Math.round(this.gameSpeed);
+    if (this.normalSpeed > 0) {
+        this.score += Math.round(this.normalSpeed);
         this.scoreElement.textContent = 'Score: ' + this.score;
     }
+  }
+  
+  updateCamera() {
+    // Calculate target camera position based on player car position
+    const targetCameraPos = new THREE.Vector3(
+      this.playerCar.mesh.position.x + this.cameraOffset.x,
+      this.cameraOffset.y,
+      this.playerCar.mesh.position.z + this.cameraOffset.z
+    );
+    
+    // Smoothly interpolate camera position
+    this.camera.position.lerp(targetCameraPos, this.cameraLerpFactor);
+    
+    // Calculate target look position based on player car
+    const targetLookPos = new THREE.Vector3(
+      this.playerCar.mesh.position.x,
+      0,
+      this.playerCar.mesh.position.z + 20
+    );
+    
+    // Update camera look target
+    this.camera.lookAt(targetLookPos);
   }
   
   checkCollisions() {

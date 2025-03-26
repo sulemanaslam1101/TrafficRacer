@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Car Racing Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+        #score-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            z-index: 100;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 10px;
+        }
+        #player-health {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            z-index: 100;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 10px;
+            transition: color 0.3s ease;
+        }
+        #player-health.warning {
+            color: #ffaa00;
+            text-shadow: 0 0 10px #ffaa00;
+        }
+        #player-health.danger {
+            color: #ff0000;
+            text-shadow: 0 0 10px #ff0000;
+            animation: pulse 2s infinite;
+        }
+        #player-health.flash {
+            animation: damage-flash 0.3s;
+        }
+        @keyframes damage-flash {
+            0% { background-color: rgba(255, 0, 0, 0.7); transform: scale(1.1); }
+            100% { background-color: rgba(0, 0, 0, 0.5); transform: scale(1); }
+        }
+        #enemy-warning {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 18px;
+            background-color: rgba(255, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            z-index: 100;
+            display: none;
+        }
+        #enemy-warning.active {
+            display: block;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+        #game-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 16px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="score-container">
+            <div id="score">Score: 0</div>
+        </div>
+        <div id="player-health">
+            <span>Health: 100%</span>
+        </div>
+        <div id="enemy-warning">
+            <span>⚠️ DANGER: ENEMY ATTACK! ⚠️</span>
+        </div>
+        <div id="game-controls">
+            <p>Arrow Keys to Drive | Up to Accelerate | Down to Brake | Left/Right to Steer</p>
+        </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html> 

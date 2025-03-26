@@ -96,8 +96,9 @@ class Coin {
 }
 
 export class CoinManager {
-    constructor(scene) {
+    constructor(scene, audioManager) {
         this.scene = scene;
+        this.audioManager = audioManager;
         this.coins = [];
         this.spawnInterval = 120;
         this.spawnCounter = 0;
