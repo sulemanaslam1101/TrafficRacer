@@ -7,7 +7,7 @@ import { AirObstacleManager } from './air-obstacle-manager.js';
 import { AudioManager } from './audio-manager.js';
 
 export class Game {
-  constructor(container) {
+  constructor(container, carData) {
     this.container = container;
     this.score = 0;
     this.scoreElement = document.getElementById('score');
@@ -22,19 +22,14 @@ export class Game {
     this.brakeDeceleration = 0.05;
     this.acceleration = 0.1;
     
-    // Create health display
-    this.healthElement = document.createElement('div');
-    this.healthElement.id = 'player-health';
-    this.healthElement.style.position = 'absolute';
-    this.healthElement.style.top = '60px';
-    this.healthElement.style.left = '20px';
-    this.healthElement.style.color = 'white';
-    this.healthElement.style.fontFamily = 'Arial, sans-serif';
-    this.healthElement.style.fontWeight = 'bold';
-    this.healthElement.style.fontSize = '24px';
-    this.healthElement.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
-    this.healthElement.innerHTML = 'Health: 100';
-    document.body.appendChild(this.healthElement);
+    // Speed display configuration
+    this.minSpeed = 0.5;  // Minimum internal speed
+    this.maxSpeed = 2.0;  // Maximum internal speed
+    this.speedMultiplier = 20; // Multiply internal speed by this to get km/h
+    this.speedElement = document.getElementById('speed-display').querySelector('span');
+    
+    // Create health display dynamically
+    this.createHealthDisplay();
     
     // Set up the scene
     this.scene = new THREE.Scene();
@@ -63,9 +58,12 @@ export class Game {
     this.road = new Road();
     this.scene.add(this.road.mesh);
     
-    // Create player car
-    this.playerCar = new PlayerCar();
+    // Create player car with selected car data
+    this.playerCar = new PlayerCar(carData);
     this.scene.add(this.playerCar.mesh);
+    
+    // Initialize health display with player car health
+    this.updateHealthDisplay();
     
     // Set up traffic manager
     this.trafficManager = new TrafficManager(this.scene);
@@ -88,6 +86,62 @@ export class Game {
     this.cameraOffset = new THREE.Vector3(0, 16, -22);
     this.cameraTarget = new THREE.Vector3(0, 0, 20);
     this.cameraLerpFactor = 0.1; // Smooth camera following
+  }
+
+  createHealthDisplay() {
+    // Create the health element dynamically
+    this.healthElement = document.createElement('div');
+    this.healthElement.id = 'player-health';
+    this.healthElement.style.position = 'absolute';
+    this.healthElement.style.top = '70px';
+    this.healthElement.style.left = '20px';
+    this.healthElement.style.color = 'white';
+    this.healthElement.style.fontSize = '24px';
+    this.healthElement.style.zIndex = '100';
+    this.healthElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    this.healthElement.style.padding = '10px 20px';
+    this.healthElement.style.borderRadius = '10px';
+    this.healthElement.style.transition = 'color 0.3s ease';
+    
+    // Add span for health text
+    const healthSpan = document.createElement('span');
+    healthSpan.textContent = 'Health: 100%';
+    this.healthElement.appendChild(healthSpan);
+    
+    // Add CSS animations and styles
+    this.addHealthStylesAndAnimations();
+    
+    // Append to game container
+    document.getElementById('game-container').appendChild(this.healthElement);
+  }
+  
+  addHealthStylesAndAnimations() {
+    // Create a style element for health-related CSS
+    const style = document.createElement('style');
+    style.textContent = `
+      #player-health.warning {
+        color: #ffaa00;
+        text-shadow: 0 0 10px #ffaa00;
+      }
+      #player-health.danger {
+        color: #ff0000;
+        text-shadow: 0 0 10px #ff0000;
+        animation: pulse 2s infinite;
+      }
+      #player-health.flash {
+        animation: damage-flash 0.3s;
+      }
+      @keyframes damage-flash {
+        0% { background-color: rgba(255, 0, 0, 0.7); transform: scale(1.1); }
+        100% { background-color: rgba(0, 0, 0, 0.5); transform: scale(1); }
+      }
+      @keyframes pulse {
+        0% { opacity: 0.7; }
+        50% { opacity: 1; }
+        100% { opacity: 0.7; }
+      }
+    `;
+    document.head.appendChild(style);
   }
   
   setupLights() {
@@ -131,7 +185,7 @@ export class Game {
     this.road.speed = 0;
     
     // Update traffic based on player's speed
-    this.trafficManager.update(this.playerCar.speed);
+    this.trafficManager.update(this.playerCar.speed, this.playerCar.mesh.position);
 
     // Update coins with same speed as traffic
     this.coinManager.update(this.playerCar.speed);
@@ -150,6 +204,9 @@ export class Game {
       isBraking,
       isAccelerating
     );
+    
+    // Update speed display
+    this.updateSpeedDisplay();
     
     // Update camera position to follow player
     this.updateCamera();
@@ -170,8 +227,8 @@ export class Game {
         // Apply damage to player
         const isDead = this.playerCar.takeDamage(projectileDamage);
         
-        // Update health display in HUD
-        this.healthElement.innerHTML = 'Health: ' + this.playerCar.health;
+        // Update health display with current health value
+        this.updateHealthDisplay();
         
         // Add visual indication of damage 
         this.healthElement.classList.add('flash');
@@ -179,16 +236,8 @@ export class Game {
             this.healthElement.classList.remove('flash');
         }, 300);
         
-        // Color the health text based on health level
-        this.healthElement.className = ''; // Clear classes
-        if (this.playerCar.health <= 25) {
-            this.healthElement.classList.add('danger');
-        } else if (this.playerCar.health <= 50) {
-            this.healthElement.classList.add('warning');
-        }
-        
         // Log hit for debugging
-        console.log(`Player hit! Health: ${this.playerCar.health}`);
+        console.log(`Player hit! Health: ${this.playerCar.health} (${Math.round((this.playerCar.health / 1000) * 100)}%)`);
         
         // Check if player died from this hit
         if (isDead) {
@@ -241,7 +290,7 @@ export class Game {
   checkCollisions() {
     const playerBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
     
-    for (const car of this.trafficManager.cars) {
+    for (const car of this.trafficManager.activeCars) {
       const trafficBox = new THREE.Box3().setFromObject(car.mesh);
       if (playerBox.intersectsBox(trafficBox)) {
         return true;
@@ -263,5 +312,34 @@ export class Game {
     requestAnimationFrame(this.gameLoop.bind(this));
     this.update();
     this.render();
+  }
+
+  updateHealthDisplay() {
+    // Calculate health percentage (1000 is max health)
+    const healthPercent = Math.max(0, Math.round((this.playerCar.health / 1000) * 100));
+    
+    // Update health display in HUD
+    const healthSpan = this.healthElement.querySelector('span');
+    healthSpan.textContent = 'Health: ' + healthPercent + '%';
+    
+    // Update styling based on health level
+    this.healthElement.classList.remove('warning', 'danger');
+    if (healthPercent <= 25) {
+      this.healthElement.classList.add('danger');
+    } else if (healthPercent <= 50) {
+      this.healthElement.classList.add('warning');
+    }
+  }
+  
+  updateSpeedDisplay() {
+    // Get current speed from player car
+    const currentSpeed = this.playerCar.speed;
+    
+    // Convert internal speed to display speed (km/h)
+    // Formula: displaySpeed = minSpeed * speedMultiplier
+    const displaySpeed = Math.round(currentSpeed * this.speedMultiplier);
+    
+    // Update the speed display
+    this.speedElement.textContent = `Speed: ${displaySpeed} km/h`;
   }
 } 

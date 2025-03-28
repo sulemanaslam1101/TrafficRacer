@@ -3,22 +3,23 @@ import * as THREE from 'three';
 class TrafficCar {
   constructor(lane) {
     this.mesh = this.createCarMesh();
-    this.baseSpeed = 0.3;  // Even slower base speed to make overtaking easier
-    this.minSpeed = 0.3;   // Minimum speed of traffic cars
-    this.maxSpeed = 0.15;  // Maximum speed of traffic cars
+    this.baseSpeed = 0.3;  // Base speed for traffic cars
     this.currentSpeed = this.baseSpeed + (Math.random() * 0.05); // Small variation in speed
     this.lane = lane;
-    // Initial position is ahead of the player
-    this.zPosition = 100 + Math.random() * 100;
+    this.zPosition = 0;
     this.mesh.position.set(lane, 0.5, this.zPosition);
-    this.active = true;
+    this.inUse = false; // Track if car is currently being used in active traffic
   }
   
   createCarMesh() {
     const car = new THREE.Group();
     
-    // Random car colors
-    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0xffa500];
+    // Random car colors - increased variety
+    const colors = [
+      0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0xffa500,
+      0x800000, 0x008000, 0x000080, 0x808000, 0x800080, 0x008080,
+      0xffffff, 0xc0c0c0, 0x808080, 0x4682B4, 0x9932CC, 0x2E8B57
+    ];
     const carColor = colors[Math.floor(Math.random() * colors.length)];
     
     // Car body
@@ -124,157 +125,255 @@ class TrafficCar {
   
   update(playerSpeed) {
     // Traffic cars move forward at their own speed
-    // They don't need to account for player speed since they're moving independently
     this.zPosition += this.currentSpeed;
     this.mesh.position.z = this.zPosition;
-    
-    // Return true if car needs to be reset (when it's too far behind)
-    return this.zPosition < -100;
+  }
+  
+  // Set car as active and visible at a specific position
+  activate(lane, zPosition, speed) {
+    this.lane = lane;
+    this.zPosition = zPosition;
+    this.currentSpeed = speed;
+    this.mesh.position.set(lane, 0.5, zPosition);
+    this.mesh.visible = true;
+    this.inUse = true;
+  }
+  
+  // Hide car when not in use
+  deactivate() {
+    this.mesh.visible = false;
+    this.inUse = false;
   }
 }
 
 export class TrafficManager {
   constructor(scene) {
     this.scene = scene;
-    this.cars = [];
     this.lanes = [-4.5, -1.5, 1.5, 4.5];
     
-    // Traffic control parameters
-    this.spawnDistance = 400;      // Distance ahead of player to spawn cars
-    this.spawnRange = 500;         // Range within which to spawn cars
-    this.minSpawnDistance = 50;    // Minimum distance between cars
-    this.spawnDelay = 3;           // Spawn cars every 3 frames
-    this.minActiveCars = 8;        // Minimum cars that should always be active
-    this.spawnBatchSize = 5;       // Number of cars to spawn when below minimum
-    this.maxCarsPerLane = 2;       // Maximum cars allowed per lane
+    // Visibility parameters
+    this.visibleRange = 80;         // Distance ahead of player where cars are visible
+    this.behindDistance = -20;      // Distance behind player where cars are hidden
+    this.playerZPosition = 0;       // Current player Z position
     
-    // Spawn control
-    this.spawnTimer = 0;
-    this.lastSpawnCheck = 0;       // Track last spawn check time
+    // Car pool parameters
+    this.totalCarsPerBatch = 12;    // Total cars per batch (4 per lane)
+    this.batches = 2;               // Number of batches to cycle through
+    this.totalPoolSize = this.totalCarsPerBatch * this.batches; // Total cars in pool
     
-    // Difficulty settings
-    this.trafficDensity = 1.0;
-    this.speedVariation = 0.3;
+    // Car positioning
+    this.minDistanceBetweenCars = 20; // Minimum distance between cars in same lane - INCREASED for better spacing
+    this.safetyDistance = 40;        // Minimum distance ahead of player for first car - INCREASED for more reaction time
     
-    // Initial spawn
-    this.initialSpawn();
+    // Car pools
+    this.carPool = [];              // All car objects
+    this.activeCars = [];           // Currently visible/active cars
     
-    // Set up continuous spawn check
-    setInterval(() => this.ensureTraffic(), 100);
+    // Distribution tracking
+    this.carsPerLane = {};          // Track number of cars in each lane
+    this.lanes.forEach(lane => this.carsPerLane[lane] = 0);
+    
+    // Lane filling control
+    // ADDED: Max cars per lane to prevent all lanes being filled
+    this.maxCarsPerLane = 2;        // Maximum number of cars allowed in each lane
+    // ADDED: Some lanes will be kept emptier for overtaking
+    this.preferredLanes = [this.lanes[1], this.lanes[2]]; // Middle lanes will have more traffic
+    this.sparseTrafficLanes = [this.lanes[0], this.lanes[3]]; // Outside lanes will have less traffic
+    
+    // Initialize car pool
+    this.initializeCarPool();
+    
+    // Create initial traffic pattern
+    this.setupInitialTraffic();
   }
   
-  // Initial spawn of traffic cars to populate the road
-  initialSpawn() {
-    // Spawn initial cars in all lanes
-    for (let lane of this.lanes) {
-      // Place fewer cars in each lane at different distances
-      for (let i = 0; i < 2; i++) {
-        this.spawnCarInLane(lane, this.spawnDistance + (i * 100) + Math.random() * 50);
+  // Create all car objects for the pool
+  initializeCarPool() {
+    for (let i = 0; i < this.totalPoolSize; i++) {
+      const lane = this.lanes[i % this.lanes.length]; // Distribute evenly across lanes
+      const car = new TrafficCar(lane);
+      car.deactivate(); // Start hidden
+      this.carPool.push(car);
+      this.scene.add(car.mesh); // Add to scene even when hidden
+    }
+  }
+  
+  // Set up initial traffic pattern
+  setupInitialTraffic() {
+    // MODIFIED: Changed initial traffic to be sparser and have better spacing
+    
+    // First, select 2 random lanes to have traffic initially (leaving 2 lanes empty for overtaking)
+    const initialTrafficLanes = this.preferredLanes.slice();
+    
+    // Place 1-2 cars in each selected lane at different distances
+    for (let lane of initialTrafficLanes) {
+      // MODIFIED: Reduced from 3 to 2 cars per lane
+      const carsInThisLane = 1 + Math.floor(Math.random() * 2); // 1 or 2 cars
+      
+      for (let i = 0; i < carsInThisLane; i++) {
+        // MODIFIED: Increased spacing between cars
+        const distance = this.safetyDistance + (i * 35) + (Math.random() * 15);
+        this.placeCarInLane(lane, this.playerZPosition + distance);
       }
     }
+    
+    // Place just 1 car in one of the sparse traffic lanes
+    const randomSparseLane = this.sparseTrafficLanes[Math.floor(Math.random() * this.sparseTrafficLanes.length)];
+    const distance = this.safetyDistance + 45 + (Math.random() * 20); // Further away
+    this.placeCarInLane(randomSparseLane, this.playerZPosition + distance);
   }
   
-  spawnCarInLane(lane, zPosition) {
-    // Check if lane is already full
-    const carsInLane = this.cars.filter(car => car.lane === lane).length;
-    if (carsInLane >= this.maxCarsPerLane) {
-      return null;
+  // Get an inactive car from the pool
+  getAvailableCar() {
+    for (let car of this.carPool) {
+      if (!car.inUse) {
+        return car;
+      }
     }
-
-    const car = new TrafficCar(lane);
-    car.zPosition = zPosition;
-    car.mesh.position.z = zPosition;
-    car.currentSpeed = car.baseSpeed + (Math.random() * this.speedVariation - this.speedVariation/2);
-    this.cars.push(car);
-    this.scene.add(car.mesh);
+    return null; // No cars available
+  }
+  
+  // Calculate the furthest car position in a lane
+  getFurthestCarPosition(lane) {
+    let furthestZ = this.playerZPosition + this.safetyDistance;
+    
+    this.activeCars.forEach(car => {
+      if (car.lane === lane && car.zPosition > furthestZ) {
+        furthestZ = car.zPosition;
+      }
+    });
+    
+    return furthestZ;
+  }
+  
+  // Place a car in a specific lane
+  placeCarInLane(lane, zPosition) {
+    // Get an available car from the pool
+    const car = this.getAvailableCar();
+    if (!car) return null; // No more cars available in pool
+    
+    // Check if position is already occupied
+    const tooClose = this.activeCars.some(activeCar => 
+      activeCar.lane === lane && 
+      Math.abs(activeCar.zPosition - zPosition) < this.minDistanceBetweenCars
+    );
+    
+    if (tooClose) return null;
+    
+    // MODIFIED: More variation in car speeds
+    const speedFactor = 0.7 + (Math.random() * 0.5); // 0.7-1.2 speed multiplier (more variation)
+    const speed = car.baseSpeed * speedFactor;
+    
+    // Activate and position the car
+    car.activate(lane, zPosition, speed);
+    
+    // Add to active cars list
+    this.activeCars.push(car);
+    this.carsPerLane[lane]++;
+    
     return car;
   }
   
-  spawnCar() {
-    // Pick random lane
-    const lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
+  // Ensure proper traffic density in visible range
+  ensureTrafficDensity() {
+    // Reset car lane counter
+    this.lanes.forEach(lane => this.carsPerLane[lane] = 0);
     
-    // Random position within spawn range
-    const spawnZ = this.spawnDistance + Math.random() * this.spawnRange;
-    
-    // Check for minimum distance in the same lane
-    const canSpawn = !this.cars.some(car => 
-      car.lane === lane && 
-      Math.abs(car.zPosition - spawnZ) < this.minSpawnDistance
-    );
-    
-    if (canSpawn) {
-      return this.spawnCarInLane(lane, spawnZ) !== null;
-    }
-    
-    return false;
-  }
-  
-  spawnBatch() {
-    // Spawn a smaller batch of new cars
-    for (let i = 0; i < this.spawnBatchSize; i++) {
-      const lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
-      const spawnZ = this.spawnDistance + Math.random() * this.spawnRange;
-      this.spawnCarInLane(lane, spawnZ);
-    }
-  }
-  
-  ensureTraffic() {
-    // Check if we need to spawn more cars
-    if (this.cars.length < this.minActiveCars) {
-      const neededCars = this.minActiveCars - this.cars.length;
-      for (let i = 0; i < neededCars; i++) {
-        const lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
-        const spawnZ = this.spawnDistance + Math.random() * this.spawnRange;
-        this.spawnCarInLane(lane, spawnZ);
+    // Count current cars in each lane
+    this.activeCars.forEach(car => {
+      if (car.inUse) {
+        this.carsPerLane[car.lane]++;
       }
-    }
-  }
-  
-  update(playerSpeed) {
-    // Remove cars that are too far behind
-    for (let i = this.cars.length - 1; i >= 0; i--) {
-      const needsReset = this.cars[i].update(playerSpeed);
-      
-      if (needsReset) {
-        // Instead of removing, recycle the car by putting it back far ahead
-        const car = this.cars[i];
-        const newLane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
-        const newZ = this.spawnDistance + Math.random() * this.spawnRange;
+    });
+    
+    // MODIFIED: Adjust traffic density based on lane preferences
+    
+    // First handle preferred lanes (more traffic)
+    for (let lane of this.preferredLanes) {
+      // MODIFIED: Reduced maximum cars in preferred lanes
+      if (this.carsPerLane[lane] < this.maxCarsPerLane) {
+        // Calculate where to place the new car
+        const furthestZ = this.getFurthestCarPosition(lane);
         
-        // Reset the car's position
-        car.lane = newLane;
-        car.zPosition = newZ;
-        car.mesh.position.set(newLane, 0.5, newZ);
-        car.currentSpeed = car.baseSpeed + (Math.random() * this.speedVariation - this.speedVariation/2);
+        // Position new car beyond the furthest one with increased spacing
+        const newPosition = furthestZ + this.minDistanceBetweenCars + (Math.random() * 15);
+        
+        // Only spawn if within visible range
+        if (newPosition <= this.playerZPosition + this.visibleRange) {
+          this.placeCarInLane(lane, newPosition);
+        }
       }
     }
     
-    // Try to spawn new cars
-    this.spawnTimer++;
-    
-    if (this.spawnTimer >= this.spawnDelay) {
-      // Try one spawn attempt each cycle
-      this.spawnCar();
-      this.spawnTimer = 0;
+    // Then handle sparse traffic lanes (less traffic)
+    for (let lane of this.sparseTrafficLanes) {
+      // MODIFIED: Keep sparse lanes emptier (only 1 car max)
+      if (this.carsPerLane[lane] < 1 && Math.random() < 0.3) { // 30% chance to add a car
+        const furthestZ = this.getFurthestCarPosition(lane);
+        
+        // Even greater spacing for sparse lanes
+        const newPosition = furthestZ + this.minDistanceBetweenCars * 1.5 + (Math.random() * 20);
+        
+        // Only spawn if within visible range
+        if (newPosition <= this.playerZPosition + this.visibleRange) {
+          this.placeCarInLane(lane, newPosition);
+        }
+      }
     }
-    
-    // Adjust spawn delay based on player speed
-    // Faster speed = slightly quicker spawns
-    this.spawnDelay = Math.max(3, 5 - (playerSpeed));
   }
   
-  // Method to adjust difficulty
-  setDifficulty(level) {
-    // level should be between 0 and 1
-    level = Math.max(0, Math.min(1, level));
+  // Update car visibility based on player position
+  updateVisibility() {
+    // Check each active car
+    for (let i = this.activeCars.length - 1; i >= 0; i--) {
+      const car = this.activeCars[i];
+      
+      // If car is behind player's visibility range, recycle it
+      if (car.zPosition < this.playerZPosition + this.behindDistance) {
+        car.deactivate();
+        this.carsPerLane[car.lane]--;
+        this.activeCars.splice(i, 1);
+      }
+      // If car is beyond visible range ahead, recycle it
+      else if (car.zPosition > this.playerZPosition + this.visibleRange) {
+        car.deactivate();
+        this.carsPerLane[car.lane]--;
+        this.activeCars.splice(i, 1);
+      }
+    }
     
-    // Adjust traffic parameters based on difficulty
-    this.trafficDensity = 1.0 + (level * 0.3);        // 1.0-1.3 density
-    this.speedVariation = 0.3 + (level * 0.05);       // 0.1-0.15 speed variation
-    this.spawnDelay = Math.max(3, 5 - (level * 1));   // 5-4 frames delay
-    this.minActiveCars = 8 + Math.floor(level * 4);   // 8-12 minimum active cars
-    this.spawnBatchSize = 5 + Math.floor(level * 2);  // 5-7 cars per batch
-    this.maxCarsPerLane = 2 + Math.floor(level * 1);  // 2-3 cars per lane
+    // Add new cars to maintain density
+    this.ensureTrafficDensity();
+    
+    // ADDED: Occasionally change lane preferences to create dynamic traffic patterns
+    if (Math.random() < 0.005) { // 0.5% chance each frame to change lane preferences
+      this.updateLanePreferences();
+    }
+  }
+  
+  // ADDED: New method to periodically change which lanes are preferred for traffic
+  updateLanePreferences() {
+    // Randomly select 2 lanes to be preferred (more traffic)
+    const shuffledLanes = [...this.lanes].sort(() => 0.5 - Math.random());
+    this.preferredLanes = shuffledLanes.slice(0, 2);
+    this.sparseTrafficLanes = shuffledLanes.slice(2, 4);
+  }
+  
+  // Main update method called each frame
+  update(playerSpeed, playerPosition = null) {
+    // Update player position
+    if (playerPosition) {
+      this.playerZPosition = playerPosition.z;
+    } else {
+      this.playerZPosition += playerSpeed;
+    }
+    
+    // Update active cars
+    for (let car of this.activeCars) {
+      car.update(playerSpeed);
+    }
+    
+    // Check visibility and recycle cars
+    this.updateVisibility();
   }
 } 

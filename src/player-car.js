@@ -1,17 +1,34 @@
 import * as THREE from 'three';
 
 export class PlayerCar {
-  constructor() {
+  constructor(carData) {
     this.speed = 0;
-    this.maxSpeed = 2.0;  // Increased max speed
-    this.minSpeed = 0.5;  // Minimum forward speed
-    this.acceleration = 0.05;
-    this.brakeForce = 0.1;
-    this.deceleration = 0.03;
-    this.turnSpeed = 0.20;
-    this.zPosition = 0;   // Track Z position for forward movement
     
-    this.health = 100;    // Player health/damage variable
+    // Use car data if provided, otherwise use default values
+    if (carData) {
+      // Apply car-specific stats from carData
+      this.maxSpeed = carData.maxSpeed || 2.0;
+      this.minSpeed = carData.minSpeed || 0.5;
+      this.acceleration = carData.acceleration || 0.05;
+      this.deceleration = carData.deceleration || 0.03;
+      this.turnSpeed = carData.turnSpeed || 0.20;
+      this.health = carData.health || 1000;
+      this.carColor = carData.color || 0x3333ff;
+    } else {
+      // Default values if no car data provided
+      this.maxSpeed = 2.0;
+      this.minSpeed = 0.5;
+      this.acceleration = 0.05;
+      this.brakeForce = 0.15;
+      this.deceleration = 0.03;
+      this.turnSpeed = 0.20;
+      this.health = 1000;
+      this.carColor = 0x3333ff;
+    }
+    
+    this.zPosition = 0;   // Track Z position for forward movement
+    this.brakeForce = 0.15; // Keep the current brake force for gradual braking
+    
     this.isHit = false;   // Flag to track hit state
     this.hitAnimationTime = 0; // Timer for hit animation
     this.hitAnimationDuration = 20; // Duration in frames
@@ -31,7 +48,7 @@ export class PlayerCar {
     
     // Car body
     const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
-    const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x3333ff });
+    const bodyMaterial = new THREE.MeshPhongMaterial({ color: this.carColor });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = 0.5;
     body.castShadow = true;
@@ -40,7 +57,7 @@ export class PlayerCar {
     
     // Car roof
     const roofGeometry = new THREE.BoxGeometry(1.5, 0.7, 2);
-    const roofMaterial = new THREE.MeshPhongMaterial({ color: 0x3333ff });
+    const roofMaterial = new THREE.MeshPhongMaterial({ color: this.carColor });
     const roof = new THREE.Mesh(roofGeometry, roofMaterial);
     roof.position.y = 1.35;
     roof.position.z = -0.5;
@@ -193,14 +210,19 @@ export class PlayerCar {
     if (accelerate) {
       this.speed = Math.min(this.maxSpeed, this.speed + this.acceleration);
     } else if (brake) {
-      // When braking, stop the car completely
-      this.speed = 0.1;
+      // Apply braking force gradually but maintain minimal movement
+      this.speed = Math.max(0.1, this.speed - this.brakeForce);
     } else {
-      // Natural deceleration to minimum speed
-      this.speed = Math.max(
-        this.minSpeed, 
-        this.speed - this.deceleration
-      );
+      // If speed is below minSpeed, gradually accelerate back to minSpeed
+      if (this.speed < this.minSpeed) {
+        this.speed = Math.min(this.minSpeed, this.speed + this.acceleration * 0.2);
+      } else {
+        // Normal deceleration to minimum speed
+        this.speed = Math.max(
+          this.minSpeed, 
+          this.speed - this.deceleration
+        );
+      }
     }
 
     // Move forward (positive Z is forward)

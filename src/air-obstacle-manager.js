@@ -103,37 +103,56 @@ class Projectile {
     createProjectileMesh() {
         const projectile = new THREE.Group();
 
-        // Fire ball core - make it larger
-        const coreGeometry = new THREE.SphereGeometry(0.8, 8, 8); // Increased from 0.5
+        // Fire ball core - make it larger and more fiery
+        const coreGeometry = new THREE.SphereGeometry(0.8, 8, 8);
         const coreMaterial = new THREE.MeshPhongMaterial({
-            color: 0xFF4500,
-            emissive: 0xFF4500,
-            emissiveIntensity: 0.7
+            color: 0xFF2200,
+            emissive: 0xFF2200,
+            emissiveIntensity: 0.9
         });
         const core = new THREE.Mesh(coreGeometry, coreMaterial);
         projectile.add(core);
 
         // Outer glow - make it larger
-        const glowGeometry = new THREE.SphereGeometry(1.2, 8, 8); // Increased from 0.8
+        const glowGeometry = new THREE.SphereGeometry(1.2, 8, 8);
         const glowMaterial = new THREE.MeshBasicMaterial({
-            color: 0xFF8C00,
+            color: 0xFF6600,
             transparent: true,
-            opacity: 0.4
+            opacity: 0.5
         });
         const glow = new THREE.Mesh(glowGeometry, glowMaterial);
         projectile.add(glow);
 
-        // Fire trail - make it larger
-        const trailGeometry = new THREE.ConeGeometry(0.6, 1.8, 8); // Increased from 0.4, 1.2
+        // Fire trail - make it larger and more dramatic
+        const trailGeometry = new THREE.ConeGeometry(0.7, 2.2, 8);
         const trailMaterial = new THREE.MeshBasicMaterial({
-            color: 0xFF8C00,
+            color: 0xFF6600,
             transparent: true,
-            opacity: 0.6
+            opacity: 0.7
         });
         const trail = new THREE.Mesh(trailGeometry, trailMaterial);
-        trail.position.z = -1.2;
+        trail.position.z = -1.4;
         trail.rotation.x = Math.PI;
         projectile.add(trail);
+
+        // Add additional embers/sparks for a more dynamic fire effect
+        for (let i = 0; i < 5; i++) {
+            const emberGeometry = new THREE.SphereGeometry(0.3, 6, 6);
+            const emberMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFFAA00,
+                transparent: true,
+                opacity: 0.6
+            });
+            const ember = new THREE.Mesh(emberGeometry, emberMaterial);
+            
+            // Random positions around the core
+            ember.position.set(
+                (Math.random() - 0.5) * 0.8,
+                (Math.random() - 0.5) * 0.8,
+                (Math.random() - 0.5) * 0.8
+            );
+            projectile.add(ember);
+        }
 
         return projectile;
     }
@@ -205,100 +224,21 @@ class AirEnemy {
     createEnemyMesh() {
         const enemy = new THREE.Group();
 
-        // Choose between helicopter or monster
-        if (Math.random() > 0.5) {
-            // Create helicopter
-            this.createHelicopter(enemy);
-        } else {
-            // Create monster
-            this.createMonster(enemy);
-        }
-
+        // Always create the dragon monster (no helicopter option)
+        this.createMonster(enemy);
+        
         return enemy;
     }
 
-    createHelicopter(group) {
-        // Main body - changed color from dark gray to vibrant blue
-        const bodyGeometry = new THREE.CylinderGeometry(1, 1.5, 4, 8);
-        bodyGeometry.rotateZ(Math.PI / 2);
-        const bodyMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x0088FF,  // Changed from 0x333333 to bright blue
-            emissive: 0x003366,
-            emissiveIntensity: 0.3
-        });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        group.add(body);
-
-        // Cockpit
-        const cockpitGeometry = new THREE.SphereGeometry(1.2, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-        const cockpitMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x87CEEB,
-            transparent: true,
-            opacity: 0.7
-        });
-        const cockpit = new THREE.Mesh(cockpitGeometry, cockpitMaterial);
-        cockpit.position.set(2, 0, 0);
-        cockpit.rotation.z = Math.PI / 2;
-        group.add(cockpit);
-
-        // Main rotor
-        const rotorGroup = new THREE.Group();
-        const rotorGeometry = new THREE.BoxGeometry(8, 0.2, 0.4);
-        const rotorMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0xCCCCCC,  // Lighter color for better visibility
-            emissive: 0x555555,
-            emissiveIntensity: 0.2
-        });
-        const rotor = new THREE.Mesh(rotorGeometry, rotorMaterial);
-        rotorGroup.add(rotor);
-        rotorGroup.position.set(0, 1.5, 0);
-        
-        // Store rotor for animation
-        this.rotor = rotorGroup;
-        group.add(rotorGroup);
-
-        // Tail
-        const tailGeometry = new THREE.CylinderGeometry(0.3, 0.6, 4, 8);
-        tailGeometry.rotateZ(Math.PI / 2);
-        const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
-        tail.position.set(-3, 0, 0);
-        group.add(tail);
-
-        // Tail rotor
-        const tailRotorGeometry = new THREE.BoxGeometry(0.2, 1.5, 0.1);
-        const tailRotor = new THREE.Mesh(tailRotorGeometry, rotorMaterial);
-        tailRotor.position.set(-5, 0, 0);
-        group.add(tailRotor);
-
-        // Gun/weapon - add a bright red tip to make it more visible
-        const gunGeometry = new THREE.BoxGeometry(0.5, 0.5, 2);
-        const gunMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x555555 
-        });
-        const gun = new THREE.Mesh(gunGeometry, gunMaterial);
-        gun.position.set(0, -1, 1);
-        group.add(gun);
-        
-        // Gun tip with glowing red
-        const gunTipGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-        const gunTipMaterial = new THREE.MeshPhongMaterial({
-            color: 0xFF0000,
-            emissive: 0xFF0000,
-            emissiveIntensity: 0.8
-        });
-        const gunTip = new THREE.Mesh(gunTipGeometry, gunTipMaterial);
-        gunTip.position.set(0, -1, 2);
-        group.add(gunTip);
-
-        group.rotation.y = Math.PI / 2; // Face forward
-    }
-
     createMonster(group) {
-        // Body
+        // Body - changed to blue color to match dragon image
         const bodyGeometry = new THREE.SphereGeometry(2, 8, 8);
         const bodyMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x8B0000,
-            roughness: 0.7
+            color: 0x0088FF, // Changed from red to blue
+            roughness: 0.5,
+            metalness: 0.2,
+            emissive: 0x003366,
+            emissiveIntensity: 0.2
         });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         group.add(body);
@@ -306,9 +246,9 @@ class AirEnemy {
         // Eyes (add two glowing eyes)
         const eyeGeometry = new THREE.SphereGeometry(0.4, 8, 8);
         const eyeMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0xFFFF00,
-            emissive: 0xFFFF00,
-            emissiveIntensity: 0.7
+            color: 0xFF6600, // Orange eyes
+            emissive: 0xFF6600,
+            emissiveIntensity: 0.8
         });
         
         const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
@@ -319,38 +259,55 @@ class AirEnemy {
         rightEye.position.set(-0.8, 0.6, 1.5);
         group.add(rightEye);
 
-        // Wings
-        const wingGeometry = new THREE.BoxGeometry(4, 0.2, 1.5);
+        // Wings - make them larger and more dragon-like
+        const wingGeometry = new THREE.BoxGeometry(5, 0.2, 2);
         const wingMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x8B0000,
-            roughness: 0.7
+            color: 0x0088FF, // Match body color
+            roughness: 0.7,
+            transparent: true,
+            opacity: 0.9
         });
         
         const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-        leftWing.position.set(3, 0, 0);
+        leftWing.position.set(3.5, 0, 0);
         leftWing.rotation.z = Math.PI / 6;
         group.add(leftWing);
         
         const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-        rightWing.position.set(-3, 0, 0);
+        rightWing.position.set(-3.5, 0, 0);
         rightWing.rotation.z = -Math.PI / 6;
         group.add(rightWing);
 
-        // Mouth/fire emitter
+        // Mouth/fire emitter - make it more prominent
         const mouthGeometry = new THREE.ConeGeometry(0.8, 1.5, 8);
         const mouthMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x000000,
-            emissive: 0xFF4500,
-            emissiveIntensity: 0.3
+            color: 0xFF3300,
+            emissive: 0xFF3300,
+            emissiveIntensity: 0.6
         });
         const mouth = new THREE.Mesh(mouthGeometry, mouthMaterial);
         mouth.position.set(0, -0.5, 2);
         mouth.rotation.x = -Math.PI / 2;
         group.add(mouth);
         
-        // Horns
-        const hornGeometry = new THREE.ConeGeometry(0.3, 1, 8);
-        const hornMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        // Add a glowing tip to the weapon to make it more visible
+        const weaponTipGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+        const weaponTipMaterial = new THREE.MeshPhongMaterial({
+            color: 0xFF0000,
+            emissive: 0xFF0000,
+            emissiveIntensity: 1.0
+        });
+        const weaponTip = new THREE.Mesh(weaponTipGeometry, weaponTipMaterial);
+        weaponTip.position.set(0, -0.5, 2.7);
+        group.add(weaponTip);
+        
+        // Horns - make them longer and darker
+        const hornGeometry = new THREE.ConeGeometry(0.3, 2, 8);
+        const hornMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x000000,
+            emissive: 0x222222,
+            emissiveIntensity: 0.2
+        });
         
         const leftHorn = new THREE.Mesh(hornGeometry, hornMaterial);
         leftHorn.position.set(1, 1.5, 0.5);
@@ -361,6 +318,19 @@ class AirEnemy {
         rightHorn.position.set(-1, 1.5, 0.5);
         rightHorn.rotation.x = -Math.PI / 4;
         group.add(rightHorn);
+
+        // Add spikes along the back
+        for (let i = 0; i < 5; i++) {
+            const spikeGeometry = new THREE.ConeGeometry(0.2, 0.8, 6);
+            const spikeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x003366,
+                roughness: 0.5
+            });
+            const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
+            spike.position.set(0, 1.2, -i * 0.6);
+            spike.rotation.x = Math.PI / 3;
+            group.add(spike);
+        }
 
         // Store wings for animation
         this.leftWing = leftWing;
@@ -496,11 +466,7 @@ class AirEnemy {
         // Keep enemy at a fixed z-offset relative to player
         this.mesh.position.z = playerPosition.z + this.zOffset;
         
-        // Update helicopter rotor or monster wings
-        if (this.rotor) {
-            this.rotor.rotation.y += 0.2;
-        }
-        
+        // Animate dragon wings
         if (this.leftWing && this.rightWing) {
             this.leftWing.rotation.z = Math.PI / 6 + Math.sin(Date.now() * 0.01) * 0.2;
             this.rightWing.rotation.z = -Math.PI / 6 - Math.sin(Date.now() * 0.01) * 0.2;
@@ -550,79 +516,19 @@ export class AirObstacleManager {
         this.active = false;
         
         // Score thresholds for enemy appearance
-        this.scoreThresholdAppear = 100;
-        this.scoreThresholdDisappear = 2500;
+        this.scoreThresholdAppear = 300;
+        this.scoreThresholdDisappear = 1600;
         
         // Add warning message when enemy appears
         this.warningElement = document.getElementById('enemy-warning');
         this.warningShown = false;
         
-        // Create warning message that will appear when obstacle is first activated
-        this.createWarningMessage();
-        
         // Track explosions
         this.explosions = [];
     }
     
-    createWarningMessage() {
-        // Create a canvas for the warning text
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        canvas.width = 512;
-        canvas.height = 128;
-        
-        // Fill with semi-transparent red background
-        context.fillStyle = 'rgba(255, 0, 0, 0.7)';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Add text
-        context.fillStyle = 'white';
-        context.font = 'bold 36px Arial';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.fillText('WARNING! ENEMY ATTACKING!', canvas.width/2, canvas.height/2);
-        
-        // Create sprite from canvas
-        const texture = new THREE.CanvasTexture(canvas);
-        const material = new THREE.SpriteMaterial({ 
-            map: texture,
-            transparent: true,
-            opacity: 0
-        });
-        
-        this.warningSprite = new THREE.Sprite(material);
-        this.warningSprite.scale.set(20, 5, 1);
-        this.warningSprite.position.set(0, 5, 20); // Position it in front of the player
-        this.scene.add(this.warningSprite);
-        
-        // Warning display properties
-        this.warningTimer = 0;
-        this.warningDuration = 120; // Show for 120 frames (about 2 seconds)
-        this.warningActive = false;
-    }
-    
-    updateWarningMessage() {
-        if (this.warningActive) {
-            this.warningTimer++;
-            
-            if (this.warningTimer <= 15) {
-                // Fade in
-                this.warningSprite.material.opacity = this.warningTimer / 15;
-            } else if (this.warningTimer > this.warningDuration - 15) {
-                // Fade out
-                this.warningSprite.material.opacity = (this.warningDuration - this.warningTimer) / 15;
-            }
-            
-            if (this.warningTimer >= this.warningDuration) {
-                this.warningActive = false;
-                this.warningSprite.material.opacity = 0;
-            }
-        }
-    }
-    
     showWarning() {
-        this.warningActive = true;
-        this.warningTimer = 0;
+        // Only handle showing the HTML warning
         this.warningShown = true;
         if (this.audioManager) {
             this.audioManager.play('projectileFire'); // Use fire sound as warning sound
@@ -635,12 +541,11 @@ export class AirObstacleManager {
     }
     
     updateExplosions() {
-        // Update and remove completed explosions
         for (let i = this.explosions.length - 1; i >= 0; i--) {
             const explosion = this.explosions[i];
-            const isComplete = explosion.update();
+            const remove = explosion.update();
             
-            if (isComplete) {
+            if (remove) {
                 explosion.remove();
                 this.explosions.splice(i, 1);
             }
@@ -668,7 +573,6 @@ export class AirObstacleManager {
                 
                 if (!this.warningShown) {
                     this.showWarning();
-                    this.warningShown = true;
                 }
             }
         } else {
@@ -693,14 +597,6 @@ export class AirObstacleManager {
             this.updateExplosions();
             return;
         }
-        
-        // Update warning position to stay relative to player
-        if (this.warningActive) {
-            this.warningSprite.position.z = playerPosition.z + 20;
-        }
-        
-        // Update warning message
-        this.updateWarningMessage();
         
         // Update enemy and get any new projectiles
         const newProjectileMeshes = this.enemy.update(playerPosition, playerSpeed, this.audioManager);
